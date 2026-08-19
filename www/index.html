@@ -81,7 +81,7 @@
     font-family:'Courier New', monospace;
   }
   .btn:active { transform:scale(0.97); background:#00ff9c; color:#001a10; }
-  #hidden { display:none !important; }
+  .hidden { display:none !important; }
   #statLine { font-size:12px; color:#4fcf9a; margin-top:14px; letter-spacing:1px; }
   #instructions { position:absolute; bottom:16px; left:0; width:100%; text-align:center; color:#2f9c72; font-size:10px; letter-spacing:1px; z-index:5; pointer-events:none; text-transform:uppercase; }
 
@@ -96,10 +96,88 @@
   }
   #pingBtn.cooling { opacity:0.3; box-shadow:none; }
   #pingBtn:active { transform:translateX(-50%) scale(0.92); }
+  #pingBtn { animation:pingPulse 2.2s ease-in-out infinite; }
+  @keyframes pingPulse {
+    0%,100% { box-shadow:0 0 22px rgba(0,255,150,0.45); }
+    50% { box-shadow:0 0 36px rgba(0,255,150,0.8), 0 0 60px rgba(0,255,150,0.25); }
+  }
+
+  #playerBarInner { animation:barPulse 2.4s ease-in-out infinite; }
+  @keyframes barPulse {
+    0%,100% { filter:brightness(1); }
+    50% { filter:brightness(1.35); }
+  }
+  #streakLabel.hot { animation:hotPulse 0.5s ease-in-out infinite; }
+  @keyframes hotPulse {
+    0%,100% { transform:scale(1); }
+    50% { transform:scale(1.12); }
+  }
+
+  /* ===== Boot sequence ===== */
+  #bootScreen {
+    position:absolute; inset:0; z-index:30; background:#000; color:#00ff9c;
+    font-family:'Courier New', monospace; font-size:13px; padding:28px 22px;
+    display:flex; flex-direction:column; justify-content:flex-start; gap:2px;
+    letter-spacing:0.5px; overflow:hidden;
+  }
+  #bootScreen .bline { opacity:0; white-space:pre-wrap; text-shadow:0 0 6px #00ff9c88; }
+  #bootScreen .bline.show { opacity:1; }
+  #bootCursor { display:inline-block; width:8px; height:14px; background:#00ff9c; box-shadow:0 0 8px #00ff9c; animation:bcblink 0.8s steps(1) infinite; vertical-align:middle; margin-left:2px; }
+  @keyframes bcblink { 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
+  #bootScreen.hidden { display:none !important; }
+  #bootFlash {
+    position:absolute; inset:0; background:#00ff9c; opacity:0; pointer-events:none;
+  }
+
+  /* ===== Glitch titles ===== */
+  .glitchTitle {
+    position:relative; display:inline-block;
+  }
+  .glitchTitle::before, .glitchTitle::after {
+    content: attr(data-text);
+    position:absolute; left:0; top:0; width:100%; height:100%;
+    overflow:hidden; background:transparent;
+  }
+  .glitchTitle::before {
+    color:#ff2e6a; left:2px; text-shadow:-1px 0 #ff2e6a;
+    animation:glitchTop 3.2s infinite linear alternate-reverse;
+  }
+  .glitchTitle::after {
+    color:#2ee6ff; left:-2px; text-shadow:1px 0 #2ee6ff;
+    animation:glitchBot 2.6s infinite linear alternate-reverse;
+  }
+  @keyframes glitchTop {
+    0%,92%,100% { clip-path: inset(0 0 92% 0); transform:translate(0,0); opacity:0; }
+    93% { clip-path: inset(10% 0 60% 0); transform:translate(-2px,-1px); opacity:0.8; }
+    95% { clip-path: inset(40% 0 20% 0); transform:translate(2px,1px); opacity:0.8; }
+    97% { clip-path: inset(70% 0 5% 0); transform:translate(-1px,0); opacity:0.8; }
+  }
+  @keyframes glitchBot {
+    0%,90%,100% { clip-path: inset(92% 0 0 0); transform:translate(0,0); opacity:0; }
+    91% { clip-path: inset(60% 0 15% 0); transform:translate(2px,0); opacity:0.8; }
+    94% { clip-path: inset(20% 0 55% 0); transform:translate(-2px,1px); opacity:0.8; }
+    98% { clip-path: inset(5% 0 80% 0); transform:translate(1px,-1px); opacity:0.8; }
+  }
+
+  #shakeWrap { position:absolute; inset:0; width:100%; height:100%; }
+
+  #comboFlash {
+    position:absolute; top:38%; left:50%; transform:translate(-50%,-50%) scale(0.6);
+    color:#ff5b3b; font-size:22px; font-weight:bold; letter-spacing:3px;
+    text-shadow:0 0 14px #ff2e00, 0 0 28px #ff2e0088; z-index:6; pointer-events:none;
+    opacity:0; text-transform:uppercase;
+  }
+  #comboFlash.pop { animation:comboPop 0.5s ease-out; }
+  @keyframes comboPop {
+    0% { opacity:0; transform:translate(-50%,-50%) scale(0.4); }
+    30% { opacity:1; transform:translate(-50%,-50%) scale(1.15); }
+    100% { opacity:0; transform:translate(-50%,-70%) scale(1); }
+  }
 </style>
 </head>
 <body>
 <div id="game">
+<div id="shakeWrap">
   <canvas id="canvas"></canvas>
   <div id="scanlines"></div>
   <div id="vignette"></div>
@@ -120,23 +198,28 @@
   </div>
 
   <div id="centerMsg"></div>
+  <div id="comboFlash"></div>
   <div id="flash"></div>
   <div id="hitFlashRed"></div>
   <div id="instructions">Ping to reveal // Swipe to strike &amp; parry // Tap to block</div>
   <div id="pingBtn">PING</div>
+</div>
 
-  <div id="startScreen">
-    <h1>&gt; BLADE_DUELIST.EXE</h1>
+  <div id="startScreen" class="hidden">
+    <h1 class="glitchTitle" data-text="&gt; BLADE_DUELIST.EXE">&gt; BLADE_DUELIST.EXE</h1>
     <p>The room is pitch black. Tap PING to send out a pulse and reveal what's hunting you. Swipe in any direction to strike. When their blade flashes red, swipe the SAME direction to parry — or tap anywhere to block. Chain kills without taking a hit and watch your target burn hotter.</p>
     <div class="btn" id="startBtn">[ RUN PROGRAM ]</div>
   </div>
 
   <div id="gameOverScreen" class="hidden">
-    <h1 id="goTitle">PROCESS TERMINATED</h1>
+    <h1 id="goTitle" class="glitchTitle" data-text="PROCESS TERMINATED">PROCESS TERMINATED</h1>
     <p id="goText">Connection lost.</p>
     <div id="statLine"></div>
     <div class="btn" id="retryBtn" style="margin-top:20px;">[ RETRY ]</div>
   </div>
+
+  <div id="bootScreen"></div>
+  <div id="bootFlash"></div>
 </div>
 
 <script>
@@ -162,6 +245,46 @@
   const teleEl = document.getElementById('enemyTelegraph');
   const teleLine = document.getElementById('teleLine');
   const pingBtn = document.getElementById('pingBtn');
+  const comboFlash = document.getElementById('comboFlash');
+  const shakeWrap = document.getElementById('shakeWrap');
+  const bootScreen = document.getElementById('bootScreen');
+  const bootFlash = document.getElementById('bootFlash');
+  const goTitle = document.getElementById('goTitle');
+
+  const BOOT_LINES = [
+    "INITIALIZING KERNEL...",
+    "LOADING NEURAL LINK.......... OK",
+    "CALIBRATING LIDAR ARRAY...... OK",
+    "SYNCING BLADE TELEMETRY...... OK",
+    "SCANNING FOR HOSTILES........ FOUND",
+    "> BLADE_DUELIST.EXE READY"
+  ];
+
+  function runBootSequence(cb){
+    bootScreen.classList.remove('hidden');
+    bootScreen.innerHTML = "";
+    let i = 0;
+    function nextLine(){
+      if (i >= BOOT_LINES.length){
+        bootFlash.style.transition = 'none';
+        bootFlash.style.opacity = 0.9;
+        requestAnimationFrame(()=>{
+          bootFlash.style.transition = 'opacity 0.35s';
+          bootFlash.style.opacity = 0;
+        });
+        setTimeout(()=>{ bootScreen.classList.add('hidden'); cb(); }, 220);
+        return;
+      }
+      const div = document.createElement('div');
+      div.className = 'bline';
+      div.textContent = BOOT_LINES[i];
+      bootScreen.appendChild(div);
+      requestAnimationFrame(()=> div.classList.add('show'));
+      i++;
+      setTimeout(nextLine, 220 + Math.random()*160);
+    }
+    nextLine();
+  }
 
   const ENEMY_NAMES = ["RUSTBLADE.THUG","HOLLOW.KNIGHT","ASH.CULTIST","IRON.SENTINEL","GRAVE.DUELIST","STORM.REAVER","THE.WARDEN","CRIMSON.HERALD"];
 
@@ -182,8 +305,11 @@
       rotY: 0,
       lidarVisibility: 0.05,
       pingCooldown: 0,
-      rings: []
+      rings: [],
+      particles: [],
+      damageNumbers: []
     };
+    shakeState.x = 0; shakeState.y = 0; shakeState.t = 0; shakeState.mag = 0;
     setupWave();
     updateHUD();
   }
@@ -224,6 +350,133 @@
     requestAnimationFrame(()=>{ hitFlashRed.style.transition = 'opacity 0.4s'; hitFlashRed.style.opacity = 0; });
   }
 
+  // ===== Screen shake =====
+  const shakeState = { x:0, y:0, t:0, mag:0 };
+  function triggerShake(mag, dur){
+    shakeState.mag = Math.max(shakeState.mag, mag);
+    shakeState.t = Math.max(shakeState.t, dur);
+  }
+  function updateShake(dt){
+    if (shakeState.t > 0){
+      shakeState.t -= dt;
+      const falloff = Math.max(0, shakeState.t) / 260;
+      const m = shakeState.mag * Math.min(1, falloff + 0.15);
+      shakeState.x = (Math.random()*2-1) * m;
+      shakeState.y = (Math.random()*2-1) * m;
+      shakeWrap.style.transform = `translate(${shakeState.x.toFixed(1)}px, ${shakeState.y.toFixed(1)}px)`;
+      if (shakeState.t <= 0){ shakeWrap.style.transform = 'translate(0,0)'; shakeState.mag = 0; }
+    }
+  }
+
+  // ===== Particle bursts =====
+  function spawnParticles(x, y, color, count, speedMin, speedMax){
+    if (!state) return;
+    for (let i=0;i<count;i++){
+      const ang = Math.random()*Math.PI*2;
+      const spd = speedMin + Math.random()*(speedMax-speedMin);
+      state.particles.push({
+        x, y,
+        vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+        life: 380 + Math.random()*320, maxLife: 380 + Math.random()*320,
+        size: 1.4 + Math.random()*2.6,
+        color
+      });
+    }
+  }
+  function updateParticles(dt){
+    if (!state) return;
+    for (const p of state.particles){
+      p.x += p.vx*dt/16; p.y += p.vy*dt/16;
+      p.vx *= 0.94; p.vy *= 0.94;
+      p.life -= dt;
+    }
+    state.particles = state.particles.filter(p => p.life > 0);
+  }
+  function drawParticles(){
+    if (!state || !state.particles.length) return;
+    ctx.save();
+    for (const p of state.particles){
+      const t = Math.max(0, p.life / p.maxLife);
+      ctx.globalAlpha = t;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size*t + 0.4, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ===== Floating damage numbers =====
+  function spawnDamageNumber(x, y, text, color, big){
+    if (!state) return;
+    state.damageNumbers.push({
+      x: x + (Math.random()*30-15), y, text, color,
+      life: 900, maxLife: 900,
+      big: !!big
+    });
+  }
+  function updateDamageNumbers(dt){
+    if (!state) return;
+    for (const d of state.damageNumbers){ d.y -= dt*0.045; d.life -= dt; }
+    state.damageNumbers = state.damageNumbers.filter(d => d.life > 0);
+  }
+  function drawDamageNumbers(){
+    if (!state || !state.damageNumbers.length) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    for (const d of state.damageNumbers){
+      const t = Math.max(0, d.life / d.maxLife);
+      ctx.globalAlpha = t;
+      ctx.font = (d.big ? 'bold 30px' : 'bold 20px') + " 'Courier New', monospace";
+      ctx.fillStyle = d.color;
+      ctx.shadowColor = d.color;
+      ctx.shadowBlur = 12;
+      ctx.fillText(d.text, d.x, d.y);
+    }
+    ctx.restore();
+  }
+
+  function showComboFlash(text){
+    comboFlash.textContent = text;
+    comboFlash.classList.remove('pop');
+    void comboFlash.offsetWidth;
+    comboFlash.classList.add('pop');
+  }
+
+  // ===== Swipe trail =====
+  let trailPoints = [];
+  function addTrailPoint(x,y){
+    trailPoints.push({x,y,t:performance.now()});
+    if (trailPoints.length > 18) trailPoints.shift();
+  }
+  function updateTrail(){
+    const now = performance.now();
+    trailPoints = trailPoints.filter(p => now - p.t < 220);
+  }
+  function drawTrail(){
+    if (trailPoints.length < 2) return;
+    const now = performance.now();
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i=1;i<trailPoints.length;i++){
+      const a = trailPoints[i-1], b = trailPoints[i];
+      const age = (now - b.t) / 220;
+      const alpha = Math.max(0, 1 - age);
+      ctx.strokeStyle = `rgba(0,255,180,${alpha*0.85})`;
+      ctx.lineWidth = Math.max(1, 9 * (1-age));
+      ctx.shadowColor = '#00ff9c';
+      ctx.shadowBlur = 14 * alpha;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   const DIRS = {
     up:[0,-1], down:[0,1], left:[-1,0], right:[1,0],
     upleft:[-0.7,-0.7], upright:[0.7,-0.7], downleft:[-0.7,0.7], downright:[0.7,0.7]
@@ -249,9 +502,12 @@
 
   function resolveEnemyAttack(playerDefended, correctDir){
     teleEl.style.opacity = 0;
+    const cx = innerWidth/2, cy = innerHeight*0.5;
     if (playerDefended && correctDir) {
       showCenterMsg("PARRY", 600);
       state.streak++;
+      spawnParticles(cx, cy, '#2ee6ff', 20, 2, 7);
+      triggerShake(4, 160);
       dealDamageToEnemy(6 + Math.floor(state.streak*0.5));
     } else if (playerDefended && !correctDir) {
       const dmg = 8 + state.wave*2;
@@ -259,12 +515,17 @@
       flashRed();
       showCenterMsg("PARTIAL BLOCK", 600);
       state.streak = 0;
+      spawnDamageNumber(cx, cy*0.7, "-"+dmg, '#ff5b3b', false);
+      triggerShake(7, 220);
     } else {
       const dmg = 16 + state.wave*3;
       state.playerHP -= dmg;
       flashRed();
       showCenterMsg("HIT TAKEN", 600);
       state.streak = 0;
+      spawnDamageNumber(cx, cy*0.7, "-"+dmg, '#ff2e2e', true);
+      spawnParticles(cx, cy*0.7, '#ff2e2e', 14, 1.5, 5);
+      triggerShake(12, 320);
     }
     updateHUD();
     checkEnd();
@@ -278,6 +539,14 @@
     state.enemyHP -= amount;
     flashWhite();
     updateHUD();
+    const cx = innerWidth/2, cy = innerHeight*0.5;
+    const color = streakColor(state.streak);
+    spawnDamageNumber(cx, cy, "-"+amount, color, false);
+    spawnParticles(cx, cy, color, 8, 1.5, 5);
+    triggerShake(3 + Math.min(6, state.streak*0.3), 140);
+    if (state.streak > 0 && state.streak % 5 === 0){
+      showComboFlash(state.streak + "x STREAK");
+    }
     if (state.enemyHP <= 0){
       state.enemyHP = 0;
       state.streak += 3;
@@ -285,6 +554,9 @@
       const goldGain = 10 + state.wave*4;
       state.gold += goldGain;
       showCenterMsg(state.enemyName + " TERMINATED  +" + goldGain + "g", 1500);
+      spawnParticles(cx, cy, color, 46, 2, 10);
+      spawnDamageNumber(cx, cy*0.85, "TERMINATED", '#00ff9c', true);
+      triggerShake(16, 420);
       state.wave++;
       state.phase = "waveTransition";
       setTimeout(()=>{ if(state.running){ setupWave(); } }, 1600);
@@ -301,7 +573,9 @@
   }
 
   function endGame(won){
-    document.getElementById('goTitle').textContent = won ? "GAUNTLET CLEARED" : "PROCESS TERMINATED";
+    const title = won ? "GAUNTLET CLEARED" : "PROCESS TERMINATED";
+    goTitle.textContent = title;
+    goTitle.setAttribute('data-text', title);
     document.getElementById('goText').textContent = won ? "Every duelist in the system has been purged." : "Your signal was cut by " + state.enemyName + ".";
     document.getElementById('statLine').textContent = "Reached Wave " + state.wave + " // Gold: " + state.gold + " // Best Streak logged: " + state.streak;
     gameOverScreen.classList.remove('hidden');
@@ -329,7 +603,7 @@
     return best;
   }
 
-  function onPointerDown(e){ touchStart = pointFromEvent(e); }
+  function onPointerDown(e){ touchStart = pointFromEvent(e); trailPoints = []; addTrailPoint(touchStart.x, touchStart.y); }
   function onPointerUp(e){
     if (!touchStart || !state || !state.running) { touchStart=null; return; }
     const end = pointFromEvent(e);
@@ -337,6 +611,11 @@
     const gesture = classifySwipe(dx,dy);
     touchStart = null;
     handlePlayerAction(gesture);
+  }
+  function onPointerMove(e){
+    if (!touchStart) return;
+    const p = pointFromEvent(e);
+    addTrailPoint(p.x, p.y);
   }
 
   function handlePlayerAction(gesture){
@@ -357,8 +636,10 @@
   }
 
   canvas.addEventListener('touchstart', onPointerDown, {passive:true});
+  canvas.addEventListener('touchmove', onPointerMove, {passive:true});
   canvas.addEventListener('touchend', onPointerUp, {passive:true});
   canvas.addEventListener('mousedown', onPointerDown);
+  canvas.addEventListener('mousemove', onPointerMove);
   canvas.addEventListener('mouseup', onPointerUp);
 
   function doPing(){
@@ -513,6 +794,10 @@
     drawGridFloor(w,h);
     drawRings(w,h);
     drawEnemy(w,h);
+    drawParticles();
+    drawDamageNumbers();
+    updateTrail();
+    drawTrail();
 
     requestAnimationFrame(draw);
   }
@@ -528,6 +813,9 @@
       if (state.pingCooldown > 0) state.pingCooldown = Math.max(0, state.pingCooldown - dt);
       for (const ring of state.rings){ ring.r += dt*0.42; ring.alpha -= dt/850; }
       state.rings = state.rings.filter(r => r.alpha > 0);
+      updateParticles(dt);
+      updateDamageNumbers(dt);
+      updateShake(dt);
 
       if (state.phase === "idle"){
         state.nextAttackDelay -= dt;
@@ -551,7 +839,11 @@
   });
   retryBtn.addEventListener('click', ()=>{
     gameOverScreen.classList.add('hidden');
-    newGame();
+    runBootSequence(()=>{ newGame(); });
+  });
+
+  runBootSequence(()=>{
+    startScreen.classList.remove('hidden');
   });
 })();
 </script>
