@@ -173,6 +173,19 @@
     30% { opacity:1; transform:translate(-50%,-50%) scale(1.15); }
     100% { opacity:0; transform:translate(-50%,-70%) scale(1); }
   }
+
+  /* ===== Rotate-device prompt (fallback if orientation isn't locked natively) ===== */
+  #rotatePrompt {
+    position:fixed; inset:0; z-index:999; background:#000;
+    display:none; flex-direction:column; align-items:center; justify-content:center;
+    color:#00ff9c; font-family:'Courier New', monospace; letter-spacing:2px;
+    text-align:center; padding:30px; text-shadow:0 0 8px #00ff9c88;
+  }
+  #rotatePrompt svg { width:64px; height:64px; margin-bottom:18px; animation:rotateHint 1.6s ease-in-out infinite; }
+  @keyframes rotateHint { 0%,100%{transform:rotate(0deg);} 50%{transform:rotate(90deg);} }
+  @media screen and (orientation:portrait) {
+    #rotatePrompt.active { display:flex; }
+  }
 </style>
 </head>
 <body>
@@ -222,6 +235,11 @@
   <div id="bootFlash"></div>
 </div>
 
+<div id="rotatePrompt">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#00ff9c" stroke-width="1.6"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="5" y1="18" x2="19" y2="18"/></svg>
+  <div>ROTATE DEVICE<br>TO LANDSCAPE</div>
+</div>
+
 <script>
 (function(){
   const canvas = document.getElementById('canvas');
@@ -250,6 +268,22 @@
   const bootScreen = document.getElementById('bootScreen');
   const bootFlash = document.getElementById('bootFlash');
   const goTitle = document.getElementById('goTitle');
+  const rotatePrompt = document.getElementById('rotatePrompt');
+
+  function tryLockLandscape(){
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock('landscape').catch(()=>{});
+      }
+    } catch(e) {}
+  }
+  function checkOrientation(){
+    const isPortrait = innerHeight > innerWidth;
+    rotatePrompt.classList.toggle('active', isPortrait);
+  }
+  addEventListener('resize', checkOrientation);
+  addEventListener('orientationchange', checkOrientation);
+  checkOrientation();
 
   const BOOT_LINES = [
     "INITIALIZING KERNEL...",
@@ -324,6 +358,8 @@
     state.phase = "idle";
     state.nextAttackDelay = 900 + Math.random()*700;
     showCenterMsg(state.enemyName + " ONLINE", 1300);
+    clearTimeout(enemyAnim._returnTimer); clearTimeout(playerAnim._returnTimer);
+    setPose(enemyAnim, 'idle', 1); setPose(playerAnim, 'idle', 1);
   }
 
   function updateHUD(){
@@ -498,16 +534,19 @@
     state.phase = "telegraph";
     state.telegraphDuration = Math.max(460, 900 - state.wave*35);
     state.telegraphTimer = 0;
+    setPose(enemyAnim, 'windup', Math.min(280, state.telegraphDuration*0.6));
   }
 
   function resolveEnemyAttack(playerDefended, correctDir){
     teleEl.style.opacity = 0;
     const cx = innerWidth/2, cy = innerHeight*0.5;
+    setPoseHold(enemyAnim, 'strike', 160, 260);
     if (playerDefended && correctDir) {
       showCenterMsg("PARRY", 600);
       state.streak++;
       spawnParticles(cx, cy, '#2ee6ff', 20, 2, 7);
       triggerShake(4, 160);
+      setPoseHold(playerAnim, 'parry', 130, 220);
       dealDamageToEnemy(6 + Math.floor(state.streak*0.5));
     } else if (playerDefended && !correctDir) {
       const dmg = 8 + state.wave*2;
@@ -517,6 +556,7 @@
       state.streak = 0;
       spawnDamageNumber(cx, cy*0.7, "-"+dmg, '#ff5b3b', false);
       triggerShake(7, 220);
+      setPoseHold(playerAnim, 'block', 140, 260);
     } else {
       const dmg = 16 + state.wave*3;
       state.playerHP -= dmg;
@@ -526,6 +566,7 @@
       spawnDamageNumber(cx, cy*0.7, "-"+dmg, '#ff2e2e', true);
       spawnParticles(cx, cy*0.7, '#ff2e2e', 14, 1.5, 5);
       triggerShake(12, 320);
+      setPoseHold(playerAnim, 'hitReact', 140, 300);
     }
     updateHUD();
     checkEnd();
@@ -557,9 +598,12 @@
       spawnParticles(cx, cy, color, 46, 2, 10);
       spawnDamageNumber(cx, cy*0.85, "TERMINATED", '#00ff9c', true);
       triggerShake(16, 420);
+      setPose(enemyAnim, 'death', 380);
       state.wave++;
       state.phase = "waveTransition";
       setTimeout(()=>{ if(state.running){ setupWave(); } }, 1600);
+    } else {
+      setPoseHold(enemyAnim, 'hitReact', 110, 160);
     }
   }
 
@@ -630,6 +674,8 @@
         const dmg = 9 + Math.floor(Math.random()*6) + Math.floor(state.streak*0.7);
         state.streak++;
         updateHUD();
+        setPoseHold(playerAnim, 'windup', 60, 0);
+        setTimeout(()=>{ setPoseHold(playerAnim, 'strike', 110, 200); }, 60);
         dealDamageToEnemy(dmg);
       }
     }
@@ -684,6 +730,89 @@
     ["handR","bladeTip"]
   ];
 
+  // ===== Pose system (deltas added on top of BASE JOINTS, per your sketches) =====
+  const POSES = {
+    idle: {},
+    windup: {
+      shoulderR:[0.05,0.08,-0.05], elbowR:[0.15,0.35,-0.25], handR:[0.10,0.55,-0.55],
+      bladeTip:[-0.15,0.85,-0.95], chest:[-0.05,0.02,0.05], head:[-0.05,0.02,0.05]
+    },
+    strike: {
+      shoulderR:[-0.05,-0.05,0.10], elbowR:[-0.35,-0.25,0.35], handR:[-0.75,-0.55,0.60],
+      bladeTip:[-1.35,-1.10,1.05], chest:[0.08,-0.03,-0.05], hip:[0.05,-0.02,-0.03],
+      kneeL:[0.05,-0.08,0.05], footL:[0.08,0,0.05]
+    },
+    parry: {
+      handL:[0.35,0.45,-0.30], elbowL:[0.15,0.25,-0.15], handR:[-0.25,0.15,0.15],
+      elbowR:[-0.15,0.05,0.10], bladeTip:[-0.55,0.35,0.15], hip:[0,-0.05,0],
+      kneeL:[0,-0.10,0], kneeR:[0,-0.10,0]
+    },
+    block: {
+      hip:[0,-0.18,0], chest:[0,-0.10,0], head:[0,-0.08,0],
+      kneeL:[0,-0.15,0.05], kneeR:[0,-0.15,-0.05],
+      elbowL:[0.10,-0.10,0.05], handL:[0.15,-0.15,0.10],
+      elbowR:[-0.10,-0.10,0.05], handR:[-0.15,-0.20,0.10], bladeTip:[-0.30,-0.25,0.15]
+    },
+    hitReact: {
+      head:[0,0.06,-0.15], chest:[0,0.02,-0.12], hip:[0,0,-0.08],
+      kneeL:[0,0,-0.05], kneeR:[0,0,-0.10], footR:[0,0,-0.12]
+    },
+    death: {
+      head:[0.10,-0.85,0.25], neck:[0.08,-0.70,0.20], chest:[0.05,-0.55,0.15], hip:[0,-0.55,0],
+      shoulderL:[0.10,-0.55,0.15], shoulderR:[0.10,-0.55,0.15],
+      elbowL:[0.10,-0.65,0.20], elbowR:[0.15,-0.70,0.10],
+      handL:[0.15,-0.60,0.25], handR:[0.10,-0.90,0.30], bladeTip:[-0.20,-1.20,0.40],
+      kneeL:[-0.05,-0.30,0.10], kneeR:[0.05,-0.30,-0.05],
+      footL:[-0.05,-0.02,0.05], footR:[0.05,-0.02,-0.05]
+    }
+  };
+  function mergePose(poseName){
+    const out = {};
+    const overrides = POSES[poseName] || {};
+    for (const key in JOINTS){
+      const base = JOINTS[key];
+      const d = overrides[key];
+      out[key] = d ? [base[0]+d[0], base[1]+d[1], base[2]+d[2]] : base.slice();
+    }
+    return out;
+  }
+  function cloneJoints(j){
+    const out = {};
+    for (const key in j) out[key] = j[key].slice();
+    return out;
+  }
+  function createAnim(){
+    return { joints: mergePose('idle'), from:null, to:null, t:0, dur:1, poseName:'idle' };
+  }
+  function setPose(anim, poseName, dur){
+    if (anim.poseName === poseName && !anim.to) return;
+    anim.from = cloneJoints(anim.joints);
+    anim.to = mergePose(poseName);
+    anim.t = 0; anim.dur = Math.max(1,dur); anim.poseName = poseName;
+  }
+  function setPoseHold(anim, poseName, dur, holdThenIdleDelay){
+    setPose(anim, poseName, dur);
+    if (holdThenIdleDelay){
+      clearTimeout(anim._returnTimer);
+      anim._returnTimer = setTimeout(()=>{ setPose(anim, 'idle', 220); }, dur + holdThenIdleDelay);
+    }
+  }
+  function updateAnim(anim, dt){
+    if (anim.to){
+      anim.t += dt;
+      const k = Math.min(1, anim.t/anim.dur);
+      for (const key in anim.to){
+        const f = anim.from[key], t = anim.to[key];
+        anim.joints[key][0] = f[0]+(t[0]-f[0])*k;
+        anim.joints[key][1] = f[1]+(t[1]-f[1])*k;
+        anim.joints[key][2] = f[2]+(t[2]-f[2])*k;
+      }
+      if (k >= 1) { anim.to = null; anim.from = null; }
+    }
+  }
+  const enemyAnim = createAnim();
+  const playerAnim = createAnim();
+
   function project(p, rotY, scale, cx, cy, camDist){
     const cosA = Math.cos(rotY), sinA = Math.sin(rotY);
     const x = p[0]*cosA + p[2]*sinA;
@@ -700,31 +829,18 @@
     return `hsl(${hue}, 100%, ${light}%)`;
   }
 
-  function drawEnemy(w,h){
-    if (!state || !state.running) return;
-    const cx = w/2, cy = h*0.5;
-    const scale = Math.min(w,h) * 0.30;
-    const bob = Math.sin(performance.now()/300) * 0.02;
-    state.rotY += 0.0032;
-    const wobble = Math.sin(state.rotY*3) * 0.12;
-
-    const color = streakColor(state.streak);
-    const glow = Math.min(28, 8 + state.streak*1.4);
-    const vis = state.lidarVisibility;
-
+  function drawSkeleton(joints, cx, cy, scale, rotY, camDist, color, glow, alpha){
     ctx.save();
-    ctx.globalAlpha = Math.max(0.05, vis);
+    ctx.globalAlpha = Math.max(0.03, alpha);
     ctx.lineWidth = Math.max(1.6, scale*0.012);
     ctx.strokeStyle = color;
     ctx.shadowColor = color;
-    ctx.shadowBlur = glow * Math.max(0.15, vis);
+    ctx.shadowBlur = glow * Math.max(0.15, alpha);
     ctx.lineCap = 'round';
 
     const projected = {};
-    for (const key in JOINTS){
-      const p = JOINTS[key].slice();
-      p[1] += bob;
-      projected[key] = project(p, wobble, scale, cx, cy, 3.2);
+    for (const key in joints){
+      projected[key] = project(joints[key], rotY, scale, cx, cy, camDist);
     }
     ctx.beginPath();
     for (const [a,b] of EDGES){
@@ -743,6 +859,43 @@
       ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fill();
     }
     ctx.restore();
+  }
+
+  function drawEnemy(w,h){
+    if (!state || !state.running) return;
+    const cx = w/2, cy = h*0.5;
+    const scale = Math.min(w,h) * 0.30;
+    const bob = Math.sin(performance.now()/300) * 0.02;
+    state.rotY += 0.0032;
+    const wobble = Math.sin(state.rotY*3) * 0.12;
+
+    const color = streakColor(state.streak);
+    const glow = Math.min(28, 8 + state.streak*1.4);
+    const vis = state.lidarVisibility;
+
+    const joints = {};
+    for (const key in enemyAnim.joints){
+      const p = enemyAnim.joints[key].slice();
+      p[1] += bob;
+      joints[key] = p;
+    }
+    drawSkeleton(joints, cx, cy, scale, wobble, 3.2, color, glow, vis);
+  }
+
+  function drawPlayer(w,h){
+    if (!state || !state.running) return;
+    const cx = w/2 + w*0.06, cy = h*0.90;
+    const scale = Math.min(w,h) * 0.24;
+    const bob = Math.sin(performance.now()/340 + 1.4) * 0.015;
+    const sway = Math.sin(performance.now()/1400) * 0.05;
+
+    const joints = {};
+    for (const key in playerAnim.joints){
+      const p = playerAnim.joints[key].slice();
+      p[1] += bob;
+      joints[key] = p;
+    }
+    drawSkeleton(joints, cx, cy, scale, sway, 2.0, '#dffff2', 14, 0.9);
   }
 
   function drawRings(w,h){
@@ -794,6 +947,7 @@
     drawGridFloor(w,h);
     drawRings(w,h);
     drawEnemy(w,h);
+    drawPlayer(w,h);
     drawParticles();
     drawDamageNumbers();
     updateTrail();
@@ -816,6 +970,8 @@
       updateParticles(dt);
       updateDamageNumbers(dt);
       updateShake(dt);
+      updateAnim(enemyAnim, dt);
+      updateAnim(playerAnim, dt);
 
       if (state.phase === "idle"){
         state.nextAttackDelay -= dt;
@@ -834,10 +990,12 @@
   requestAnimationFrame(tick);
 
   startBtn.addEventListener('click', ()=>{
+    tryLockLandscape();
     startScreen.classList.add('hidden');
     newGame();
   });
   retryBtn.addEventListener('click', ()=>{
+    tryLockLandscape();
     gameOverScreen.classList.add('hidden');
     runBootSequence(()=>{ newGame(); });
   });
