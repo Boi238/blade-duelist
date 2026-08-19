@@ -1,0 +1,6 @@
+{
+  "appId": "com.yourname.bladeduelist",
+  "appName": "Blade Duelist",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}

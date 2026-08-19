@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BLADE_DUELIST.EXE</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#000; font-family:'Courier New', monospace; touch-action:none; }
+  #game { position:relative; width:100%; height:100%; }
+  canvas { display:block; width:100%; height:100%; }
+
+  #scanlines {
+    position:absolute; inset:0; pointer-events:none; z-index:9;
+    background:repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0.18) 1px,
+      rgba(0,0,0,0) 3px
+    );
+    mix-blend-mode:multiply;
+  }
+  #vignette {
+    position:absolute; inset:0; pointer-events:none; z-index:9;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.75) 100%);
+  }
+  #flicker {
+    position:absolute; inset:0; pointer-events:none; z-index:9;
+    background:rgba(0,255,140,0.02);
+    animation:flick 0.15s infinite;
+  }
+  @keyframes flick { 0%{opacity:0.3;} 50%{opacity:0.7;} 100%{opacity:0.3;} }
+
+  #hud { position:absolute; top:0; left:0; width:100%; padding:14px 16px; display:flex; flex-direction:column; gap:8px; pointer-events:none; z-index:5; }
+  .barRow { display:flex; align-items:center; gap:8px; }
+  .barLabel { color:#5fffb0; font-size:11px; letter-spacing:2px; text-shadow:0 0 6px #00ff9c; width:70px; text-transform:uppercase; }
+  .barOuter { flex:1; height:12px; background:rgba(0,20,10,0.6); border:1px solid #1e6b4a; box-shadow:0 0 8px rgba(0,255,150,0.15) inset; }
+  .barInner { height:100%; transition:width 0.2s linear; box-shadow:0 0 10px currentColor; }
+  #playerBarInner { background:#00ff9c; color:#00ff9c; }
+  #enemyBarInner { background:#ff3b3b; color:#ff3b3b; }
+  #topRight { position:absolute; top:14px; right:16px; text-align:right; color:#5fffb0; font-size:11px; letter-spacing:2px; text-shadow:0 0 6px #00ff9c; z-index:5; pointer-events:none; text-transform:uppercase; }
+  #waveLabel { font-size:14px; font-weight:bold; }
+  #streakLabel { margin-top:4px; font-size:12px; }
+  #streakLabel.hot { color:#ff5b3b; text-shadow:0 0 10px #ff2e00; }
+
+  #enemyTelegraph {
+    position:absolute; left:50%; top:50%; width:130px; height:130px;
+    transform:translate(-50%,-50%); pointer-events:none; z-index:4;
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; transition:opacity 0.06s linear;
+  }
+  #enemyTelegraph svg { width:100%; height:100%; filter:drop-shadow(0 0 10px #ff2e2e); }
+
+  #centerMsg {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    color:#7dffc4; font-size:16px; text-align:center; text-shadow:0 0 12px #00ff9c;
+    letter-spacing:3px; text-transform:uppercase; z-index:6; pointer-events:none; opacity:0; transition:opacity 0.3s;
+  }
+
+  #flash { position:absolute; inset:0; background:#eafff5; opacity:0; pointer-events:none; z-index:8; }
+  #hitFlashRed { position:absolute; inset:0; background:#ff0000; opacity:0; pointer-events:none; z-index:8; }
+
+  #startScreen, #gameOverScreen {
+    position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:#000;
+    background-image:
+      linear-gradient(rgba(0,255,150,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,150,0.06) 1px, transparent 1px);
+    background-size: 34px 34px;
+    color:#7dffc4; text-align:center; padding:20px;
+  }
+  #startScreen h1, #gameOverScreen h1 {
+    font-size:30px; letter-spacing:4px; margin-bottom:10px; color:#00ff9c;
+    text-shadow:0 0 6px #00ff9c, 0 0 24px #00ff9c44; text-transform:uppercase;
+  }
+  #startScreen p, #gameOverScreen p { font-size:13px; color:#4fcf9a; max-width:320px; line-height:1.6; margin-bottom:22px; letter-spacing:0.5px; }
+  .btn {
+    background:#001a10; border:1px solid #00ff9c; color:#00ff9c;
+    padding:14px 36px; font-size:15px; letter-spacing:3px; cursor:pointer; text-transform:uppercase;
+    box-shadow:0 0 16px rgba(0,255,150,0.35), inset 0 0 10px rgba(0,255,150,0.1);
+    font-family:'Courier New', monospace;
+  }
+  .btn:active { transform:scale(0.97); background:#00ff9c; color:#001a10; }
+  #hidden { display:none !important; }
+  #statLine { font-size:12px; color:#4fcf9a; margin-top:14px; letter-spacing:1px; }
+  #instructions { position:absolute; bottom:16px; left:0; width:100%; text-align:center; color:#2f9c72; font-size:10px; letter-spacing:1px; z-index:5; pointer-events:none; text-transform:uppercase; }
+
+  #pingBtn {
+    position:absolute; bottom:64px; left:50%; transform:translateX(-50%);
+    width:76px; height:76px; border-radius:50%;
+    background:radial-gradient(circle at center, rgba(0,255,150,0.28), rgba(0,15,8,0.92));
+    border:2px solid #00ff9c; color:#00ff9c; font-size:11px; letter-spacing:1px;
+    display:flex; align-items:center; justify-content:center; text-transform:uppercase;
+    z-index:7; box-shadow:0 0 22px rgba(0,255,150,0.45);
+    font-family:'Courier New', monospace;
+  }
+  #pingBtn.cooling { opacity:0.3; box-shadow:none; }
+  #pingBtn:active { transform:translateX(-50%) scale(0.92); }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="canvas"></canvas>
+  <div id="scanlines"></div>
+  <div id="vignette"></div>
+  <div id="flicker"></div>
+
+  <div id="hud">
+    <div class="barRow"><div class="barLabel">You</div><div class="barOuter"><div class="barInner" id="playerBarInner" style="width:100%"></div></div></div>
+    <div class="barRow"><div class="barLabel" id="enemyNameLabel">Foe</div><div class="barOuter"><div class="barInner" id="enemyBarInner" style="width:100%"></div></div></div>
+  </div>
+  <div id="topRight">
+    <div id="waveLabel">Wave 01</div>
+    <div id="goldLabel">Gold: 0</div>
+    <div id="streakLabel">Streak: 0</div>
+  </div>
+
+  <div id="enemyTelegraph">
+    <svg viewBox="0 0 100 100"><line id="teleLine" x1="20" y1="20" x2="80" y2="80" stroke="#ff3b3b" stroke-width="7" stroke-linecap="round"/></svg>
+  </div>
+
+  <div id="centerMsg"></div>
+  <div id="flash"></div>
+  <div id="hitFlashRed"></div>
+  <div id="instructions">Ping to reveal // Swipe to strike &amp; parry // Tap to block</div>
+  <div id="pingBtn">PING</div>
+
+  <div id="startScreen">
+    <h1>&gt; BLADE_DUELIST.EXE</h1>
+    <p>The room is pitch black. Tap PING to send out a pulse and reveal what's hunting you. Swipe in any direction to strike. When their blade flashes red, swipe the SAME direction to parry — or tap anywhere to block. Chain kills without taking a hit and watch your target burn hotter.</p>
+    <div class="btn" id="startBtn">[ RUN PROGRAM ]</div>
+  </div>
+
+  <div id="gameOverScreen" class="hidden">
+    <h1 id="goTitle">PROCESS TERMINATED</h1>
+    <p id="goText">Connection lost.</p>
+    <div id="statLine"></div>
+    <div class="btn" id="retryBtn" style="margin-top:20px;">[ RETRY ]</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  function resize(){ canvas.width = innerWidth * devicePixelRatio; canvas.height = innerHeight * devicePixelRatio; canvas.style.width=innerWidth+'px'; canvas.style.height=innerHeight+'px'; ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); }
+  resize(); addEventListener('resize', resize);
+
+  const startScreen = document.getElementById('startScreen');
+  const gameOverScreen = document.getElementById('gameOverScreen');
+  const startBtn = document.getElementById('startBtn');
+  const retryBtn = document.getElementById('retryBtn');
+  const playerBarInner = document.getElementById('playerBarInner');
+  const enemyBarInner = document.getElementById('enemyBarInner');
+  const enemyNameLabel = document.getElementById('enemyNameLabel');
+  const waveLabel = document.getElementById('waveLabel');
+  const goldLabel = document.getElementById('goldLabel');
+  const streakLabel = document.getElementById('streakLabel');
+  const centerMsg = document.getElementById('centerMsg');
+  const flashEl = document.getElementById('flash');
+  const hitFlashRed = document.getElementById('hitFlashRed');
+  const teleEl = document.getElementById('enemyTelegraph');
+  const teleLine = document.getElementById('teleLine');
+  const pingBtn = document.getElementById('pingBtn');
+
+  const ENEMY_NAMES = ["RUSTBLADE.THUG","HOLLOW.KNIGHT","ASH.CULTIST","IRON.SENTINEL","GRAVE.DUELIST","STORM.REAVER","THE.WARDEN","CRIMSON.HERALD"];
+
+  let state = null;
+
+  function newGame(){
+    state = {
+      wave: 1, gold: 0,
+      playerHP: 100, playerMaxHP: 100,
+      enemyHP: 0, enemyMaxHP: 0,
+      enemyName: "",
+      phase: "idle",
+      telegraphDir: null, telegraphTimer: 0, telegraphDuration: 0,
+      nextAttackDelay: 0,
+      streak: 0,
+      running: true,
+      lastTime: performance.now(),
+      rotY: 0,
+      lidarVisibility: 0.05,
+      pingCooldown: 0,
+      rings: []
+    };
+    setupWave();
+    updateHUD();
+  }
+
+  function setupWave(){
+    const w = state.wave;
+    state.enemyName = ENEMY_NAMES[Math.min(w-1, ENEMY_NAMES.length-1)];
+    state.enemyMaxHP = 60 + w*22;
+    state.enemyHP = state.enemyMaxHP;
+    enemyNameLabel.textContent = state.enemyName;
+    waveLabel.textContent = "Wave " + String(w).padStart(2,'0');
+    state.phase = "idle";
+    state.nextAttackDelay = 900 + Math.random()*700;
+    showCenterMsg(state.enemyName + " ONLINE", 1300);
+  }
+
+  function updateHUD(){
+    playerBarInner.style.width = Math.max(0,(state.playerHP/state.playerMaxHP*100)) + "%";
+    enemyBarInner.style.width = Math.max(0,(state.enemyHP/state.enemyMaxHP*100)) + "%";
+    goldLabel.textContent = "Gold: " + state.gold;
+    streakLabel.textContent = "Streak: " + state.streak;
+    streakLabel.classList.toggle('hot', state.streak >= 6);
+  }
+
+  function showCenterMsg(text, dur){
+    centerMsg.textContent = text;
+    centerMsg.style.opacity = 1;
+    clearTimeout(showCenterMsg._t);
+    showCenterMsg._t = setTimeout(()=>{ centerMsg.style.opacity = 0; }, dur);
+  }
+
+  function flashWhite(){
+    flashEl.style.transition = 'none'; flashEl.style.opacity = 0.5;
+    requestAnimationFrame(()=>{ flashEl.style.transition = 'opacity 0.25s'; flashEl.style.opacity = 0; });
+  }
+  function flashRed(){
+    hitFlashRed.style.transition = 'none'; hitFlashRed.style.opacity = 0.5;
+    requestAnimationFrame(()=>{ hitFlashRed.style.transition = 'opacity 0.4s'; hitFlashRed.style.opacity = 0; });
+  }
+
+  const DIRS = {
+    up:[0,-1], down:[0,1], left:[-1,0], right:[1,0],
+    upleft:[-0.7,-0.7], upright:[0.7,-0.7], downleft:[-0.7,0.7], downright:[0.7,0.7]
+  };
+  function dirLineCoords(dir){
+    const [dx,dy] = DIRS[dir];
+    const cx=50, cy=50, len=35;
+    return { x1: cx-dx*len, y1: cy-dy*len, x2: cx+dx*len, y2: cy+dy*len };
+  }
+
+  function startEnemyTelegraph(){
+    const dirKeys = Object.keys(DIRS);
+    const dir = dirKeys[Math.floor(Math.random()*dirKeys.length)];
+    state.telegraphDir = dir;
+    const coords = dirLineCoords(dir);
+    teleLine.setAttribute('x1',coords.x1); teleLine.setAttribute('y1',coords.y1);
+    teleLine.setAttribute('x2',coords.x2); teleLine.setAttribute('y2',coords.y2);
+    teleEl.style.opacity = 1;
+    state.phase = "telegraph";
+    state.telegraphDuration = Math.max(460, 900 - state.wave*35);
+    state.telegraphTimer = 0;
+  }
+
+  function resolveEnemyAttack(playerDefended, correctDir){
+    teleEl.style.opacity = 0;
+    if (playerDefended && correctDir) {
+      showCenterMsg("PARRY", 600);
+      state.streak++;
+      dealDamageToEnemy(6 + Math.floor(state.streak*0.5));
+    } else if (playerDefended && !correctDir) {
+      const dmg = 8 + state.wave*2;
+      state.playerHP -= dmg;
+      flashRed();
+      showCenterMsg("PARTIAL BLOCK", 600);
+      state.streak = 0;
+    } else {
+      const dmg = 16 + state.wave*3;
+      state.playerHP -= dmg;
+      flashRed();
+      showCenterMsg("HIT TAKEN", 600);
+      state.streak = 0;
+    }
+    updateHUD();
+    checkEnd();
+    if (state.running){
+      state.phase = "idle";
+      state.nextAttackDelay = Math.max(500, 1000 + Math.random()*900 - state.wave*15);
+    }
+  }
+
+  function dealDamageToEnemy(amount){
+    state.enemyHP -= amount;
+    flashWhite();
+    updateHUD();
+    if (state.enemyHP <= 0){
+      state.enemyHP = 0;
+      state.streak += 3;
+      updateHUD();
+      const goldGain = 10 + state.wave*4;
+      state.gold += goldGain;
+      showCenterMsg(state.enemyName + " TERMINATED  +" + goldGain + "g", 1500);
+      state.wave++;
+      state.phase = "waveTransition";
+      setTimeout(()=>{ if(state.running){ setupWave(); } }, 1600);
+    }
+  }
+
+  function checkEnd(){
+    if (state.playerHP <= 0){
+      state.playerHP = 0;
+      updateHUD();
+      state.running = false;
+      endGame(false);
+    }
+  }
+
+  function endGame(won){
+    document.getElementById('goTitle').textContent = won ? "GAUNTLET CLEARED" : "PROCESS TERMINATED";
+    document.getElementById('goText').textContent = won ? "Every duelist in the system has been purged." : "Your signal was cut by " + state.enemyName + ".";
+    document.getElementById('statLine').textContent = "Reached Wave " + state.wave + " // Gold: " + state.gold + " // Best Streak logged: " + state.streak;
+    gameOverScreen.classList.remove('hidden');
+  }
+
+  let touchStart = null;
+  function pointFromEvent(e){
+    if (e.touches && e.touches.length) return {x:e.touches[0].clientX, y:e.touches[0].clientY};
+    if (e.changedTouches && e.changedTouches.length) return {x:e.changedTouches[0].clientX, y:e.changedTouches[0].clientY};
+    return {x:e.clientX, y:e.clientY};
+  }
+  function classifySwipe(dx,dy){
+    const dist = Math.hypot(dx,dy);
+    if (dist < 28) return "tap";
+    const angle = Math.atan2(dy,dx) * 180/Math.PI;
+    const dirsOrder = [
+      {name:"right", a:0},{name:"downright", a:45},{name:"down", a:90},{name:"downleft", a:135},
+      {name:"left", a:180},{name:"left", a:-180},{name:"upleft", a:-135},{name:"up", a:-90},{name:"upright", a:-45}
+    ];
+    let best=null, bestDiff=999;
+    for (const d of dirsOrder){
+      let diff = Math.abs(angle-d.a); if (diff>180) diff=360-diff;
+      if (diff<bestDiff){ bestDiff=diff; best=d.name; }
+    }
+    return best;
+  }
+
+  function onPointerDown(e){ touchStart = pointFromEvent(e); }
+  function onPointerUp(e){
+    if (!touchStart || !state || !state.running) { touchStart=null; return; }
+    const end = pointFromEvent(e);
+    const dx = end.x - touchStart.x, dy = end.y - touchStart.y;
+    const gesture = classifySwipe(dx,dy);
+    touchStart = null;
+    handlePlayerAction(gesture);
+  }
+
+  function handlePlayerAction(gesture){
+    if (!state.running) return;
+    if (state.phase === "telegraph"){
+      const correctDir = (gesture === state.telegraphDir);
+      resolveEnemyAttack(true, correctDir);
+      return;
+    }
+    if (state.phase === "idle"){
+      if (gesture !== "tap"){
+        const dmg = 9 + Math.floor(Math.random()*6) + Math.floor(state.streak*0.7);
+        state.streak++;
+        updateHUD();
+        dealDamageToEnemy(dmg);
+      }
+    }
+  }
+
+  canvas.addEventListener('touchstart', onPointerDown, {passive:true});
+  canvas.addEventListener('touchend', onPointerUp, {passive:true});
+  canvas.addEventListener('mousedown', onPointerDown);
+  canvas.addEventListener('mouseup', onPointerUp);
+
+  function doPing(){
+    if (!state || !state.running || state.pingCooldown > 0) return;
+    state.lidarVisibility = 1;
+    state.rings.push({r:14, alpha:0.85});
+    state.pingCooldown = 1150;
+    pingBtn.classList.add('cooling');
+    setTimeout(()=>{ pingBtn.classList.remove('cooling'); }, state.pingCooldown);
+  }
+  function pingHandler(e){ e.preventDefault(); e.stopPropagation(); doPing(); }
+  pingBtn.addEventListener('touchstart', pingHandler, {passive:false});
+  pingBtn.addEventListener('mousedown', pingHandler);
+
+  const JOINTS = {
+    head:      [0, 1.72, 0],
+    neck:      [0, 1.50, 0],
+    chest:     [0, 1.28, 0],
+    shoulderL: [-0.36, 1.46, 0],
+    shoulderR: [0.36, 1.46, 0],
+    elbowL:    [-0.52, 1.12, 0.08],
+    elbowR:    [0.55, 1.18, -0.10],
+    handL:     [-0.58, 0.80, 0.18],
+    handR:     [0.80, 1.42, -0.35],
+    hip:       [0, 0.92, 0],
+    hipL:      [-0.19, 0.90, 0],
+    hipR:      [0.19, 0.90, 0],
+    kneeL:     [-0.22, 0.50, 0.06],
+    kneeR:     [0.22, 0.48, -0.05],
+    footL:     [-0.25, 0.02, 0.12],
+    footR:     [0.25, 0.02, -0.10],
+    bladeTip:  [1.35, 1.90, -0.55]
+  };
+  const EDGES = [
+    ["head","neck"], ["neck","chest"], ["chest","hip"],
+    ["neck","shoulderL"], ["neck","shoulderR"], ["shoulderL","shoulderR"],
+    ["shoulderL","elbowL"], ["elbowL","handL"],
+    ["shoulderR","elbowR"], ["elbowR","handR"],
+    ["hip","hipL"], ["hip","hipR"],
+    ["hipL","kneeL"], ["kneeL","footL"],
+    ["hipR","kneeR"], ["kneeR","footR"],
+    ["handR","bladeTip"]
+  ];
+
+  function project(p, rotY, scale, cx, cy, camDist){
+    const cosA = Math.cos(rotY), sinA = Math.sin(rotY);
+    const x = p[0]*cosA + p[2]*sinA;
+    const z = -p[0]*sinA + p[2]*cosA;
+    const y = p[1];
+    const persp = camDist / (camDist + z);
+    return { x: cx + x*scale*persp, y: cy - (y-0.9)*scale*persp, s: persp };
+  }
+
+  function streakColor(streak){
+    const t = Math.max(0, Math.min(1, streak/14));
+    const hue = 150 - t*150;
+    const light = 55 + t*10;
+    return `hsl(${hue}, 100%, ${light}%)`;
+  }
+
+  function drawEnemy(w,h){
+    if (!state || !state.running) return;
+    const cx = w/2, cy = h*0.5;
+    const scale = Math.min(w,h) * 0.30;
+    const bob = Math.sin(performance.now()/300) * 0.02;
+    state.rotY += 0.0032;
+    const wobble = Math.sin(state.rotY*3) * 0.12;
+
+    const color = streakColor(state.streak);
+    const glow = Math.min(28, 8 + state.streak*1.4);
+    const vis = state.lidarVisibility;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0.05, vis);
+    ctx.lineWidth = Math.max(1.6, scale*0.012);
+    ctx.strokeStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = glow * Math.max(0.15, vis);
+    ctx.lineCap = 'round';
+
+    const projected = {};
+    for (const key in JOINTS){
+      const p = JOINTS[key].slice();
+      p[1] += bob;
+      projected[key] = project(p, wobble, scale, cx, cy, 3.2);
+    }
+    ctx.beginPath();
+    for (const [a,b] of EDGES){
+      const pa = projected[a], pb = projected[b];
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    ctx.shadowBlur = glow*0.6;
+    for (const key in projected){
+      if (key === 'bladeTip') continue;
+      const p = projected[key];
+      const r = Math.max(1.2, scale*0.014*p.s);
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawRings(w,h){
+    if (!state || !state.rings.length) return;
+    const cx = w/2, cy = h*0.5;
+    ctx.save();
+    for (const ring of state.rings){
+      ctx.beginPath();
+      ctx.arc(cx, cy, ring.r, 0, Math.PI*2);
+      ctx.strokeStyle = `rgba(0,255,180,${Math.max(0,ring.alpha)})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = "#00ff9c";
+      ctx.shadowBlur = 12;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawGridFloor(w,h){
+    const horizon = h*0.62;
+    const vis = state ? state.lidarVisibility : 0.05;
+    ctx.save();
+    ctx.globalAlpha = 0.12 + vis*0.55;
+    ctx.strokeStyle = "rgba(0,255,160,0.16)";
+    ctx.lineWidth = 1;
+    for (let i=0;i<14;i++){
+      const t = i/13;
+      const y = horizon + Math.pow(t,2.2) * (h-horizon);
+      ctx.globalAlpha = 0.5 - t*0.25;
+      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+    }
+    ctx.globalAlpha = 0.35;
+    const vanishX = w/2;
+    for (let i=-10;i<=10;i++){
+      ctx.beginPath();
+      ctx.moveTo(vanishX + i*(w/20), horizon);
+      ctx.lineTo(vanishX + i*(w*1.6/20), h);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function draw(){
+    const w = innerWidth, h = innerHeight;
+    ctx.clearRect(0,0,w,h);
+    ctx.fillStyle = "#020403";
+    ctx.fillRect(0,0,w,h);
+
+    drawGridFloor(w,h);
+    drawRings(w,h);
+    drawEnemy(w,h);
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+
+  function tick(){
+    if (state && state.running){
+      const now = performance.now();
+      const dt = now - state.lastTime;
+      state.lastTime = now;
+
+      state.lidarVisibility = Math.max(0.05, state.lidarVisibility - dt/2600);
+      if (state.pingCooldown > 0) state.pingCooldown = Math.max(0, state.pingCooldown - dt);
+      for (const ring of state.rings){ ring.r += dt*0.42; ring.alpha -= dt/850; }
+      state.rings = state.rings.filter(r => r.alpha > 0);
+
+      if (state.phase === "idle"){
+        state.nextAttackDelay -= dt;
+        if (state.nextAttackDelay <= 0){
+          startEnemyTelegraph();
+        }
+      } else if (state.phase === "telegraph"){
+        state.telegraphTimer += dt;
+        if (state.telegraphTimer >= state.telegraphDuration){
+          resolveEnemyAttack(false, false);
+        }
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  startBtn.addEventListener('click', ()=>{
+    startScreen.classList.add('hidden');
+    newGame();
+  });
+  retryBtn.addEventListener('click', ()=>{
+    gameOverScreen.classList.add('hidden');
+    newGame();
+  });
+})();
+</script>
+</body>
+</html>
